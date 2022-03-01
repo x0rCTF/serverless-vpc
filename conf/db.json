@@ -1,0 +1,6 @@
+{
+    "DBUser": "root",
+    "DBPass": "supersecretpass",
+    "DBName": "mentorship",
+    "AdminCIDR": "213.135.186.69/32"
+}

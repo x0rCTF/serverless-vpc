@@ -86,9 +86,9 @@ Resources:
         - Key: Name
           Value: DB Backup Subnet
 
-          #######
-          # RDS #
-          #######
+          ######################
+          # RDS MySQL Database #
+          ######################
 
   RDSSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -113,11 +113,6 @@ Resources:
           FromPort: 3306
           ToPort: 3306
           IpProtocol: tcp
-        - SourceSecurityGroupId: !Ref JumpBoxSecurityGroup
-          Description: "SSH"
-          FromPort: 22
-          ToPort: 22
-          IpProtocol: tcp
       VpcId: !Ref VPC
       Tags:
         - Key: Name
@@ -130,12 +125,12 @@ Resources:
       BackupRetentionPeriod: 0
       DBInstanceIdentifier: masterdb
       DBInstanceClass: db.t2.micro
-      DBName: !Ref DBName
+      DBName: ${param:DBName}
       DBSubnetGroupName: !Ref RDSSubnetGroup
       Engine: mysql
       EngineVersion: 8.0.27
-      MasterUsername: !Ref DBUser
-      MasterUserPassword: !Ref DBPass
+      MasterUsername: ${param:DBUser}
+      MasterUserPassword: ${param:DBPass}
       MultiAZ: false
       Port: 3306
       PubliclyAccessible: false
@@ -143,9 +138,9 @@ Resources:
       VPCSecurityGroups: 
         - !Ref RDSSecurityGroup
 
-          ###########
-          # JumpBox #
-          ###########
+          ####################
+          # JumpBox Instance #
+          ####################
 
   JumpBoxSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -174,10 +169,10 @@ Resources:
             #!/bin/bash -xe
             sudo yum update -y
             sudo yum install mysql -y
-            cat <<EOF | mysql --host=${RDSInstance.Endpoint.Address} --user=${DBUser} --password=${DBPass}
+            cat <<EOF | mysql --host=${RDSInstance.Endpoint.Address} --user=${param:DBUser} --password=${param:DBPass}
 
-            USE ${DBName};
-            CREATE TABLE IF NOT EXISTS EOF (
+            USE ${param:DBName};
+            CREATE TABLE IF NOT EXISTS WeatherApp (
                 Id INT AUTO_INCREMENT PRIMARY KEY,
                 City VARCHAR(255) NOT NULL,
                 Country VARCHAR(255) NOT NULL,
@@ -188,7 +183,6 @@ Resources:
             ); 
 
             EOF
-# mysql -u root -h ${RDSInstance.Endpoint.Address} -p supersecretpass
       NetworkInterfaces:       
         - AssociatePublicIpAddress: true
           DeleteOnTermination: true
@@ -200,16 +194,81 @@ Resources:
         - Key: Name
           Value: JumpBox EC2 Instance
 
-Parameters:
-  DBName:
-    Default: 'mentorship'
-    Description: My database
-    Type: String
+          ##############
+          # WeatherApp # 
+          ##############
 
-  DBUser:
-    Default: 'root'
-    Type: String
 
-  DBPass:
-    Default: 'supersecretpass'
-    Type: String
+        ##############
+        # SNS Topics #
+        ##############
+
+  myWeatherTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "Sending"
+      TopicName: myWeatherTopic
+
+  SNSEMAIL:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "G2 WeatherApp"
+      TopicName: SNSEMAIL
+
+      ###############
+      # e-mail subs # 
+      ###############
+  sub1:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: hridimoski@gmail.com
+      Protocol: email
+      TopicArn: !Ref SNSEMAIL
+
+  sub2:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: alekss.stevanoski@gmail.com
+      Protocol: email
+      TopicArn: !Ref SNSEMAIL
+
+        #######
+        # QUE #  
+        #######      
+
+  myRDSQueue:
+        Type: "AWS::SQS::Queue"
+        Properties:
+            QueueName: myRDSQueue
+            DelaySeconds: 0
+            MaximumMessageSize: 4096
+            ReceiveMessageWaitTimeSeconds: 10
+            VisibilityTimeout: 30
+            Tags:
+              - Key: Name
+                Value: SQS2RDS
+
+  snsTomyRDSQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "allow-sns-messages"
+            Effect: Allow
+            Principal: "*"
+            Resource: !GetAtt myRDSQueue.Arn
+            Action: "SQS:SendMessage"
+            Condition:
+              ArnEquals:
+                "aws:SourceArn": !Ref myWeatherTopic
+      Queues:
+        - Ref: myRDSQueue
+
+  myRDSQueueSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref myWeatherTopic
+      Endpoint: !GetAtt myRDSQueue.Arn
+      Protocol: sqs
+      RawMessageDelivery: true

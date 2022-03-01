@@ -1,5 +1,10 @@
 {
   "devDependencies": {
     "serverless-offline": "^8.5.0"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1083.0",
+    "axios": "^0.26.0",
+    "mysql": "^2.18.1"
   }
 }

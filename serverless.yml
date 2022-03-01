@@ -21,7 +21,61 @@ params:
 provider:
   name: aws
   runtime: nodejs14.x
+  memorySize: 128
+  timeout: 5
   region: us-east-1
+  versionFunctions: false
+  stage: dev
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "sns:*"
+      Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*
+    - Effect: "Allow"
+      Action:
+        - "rds:*"
+      Resource: !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:*
+
+functions:
+  cron:
+    handler: src/handler.cron
+    description: Cron event taking data from api.openweathermap.org API and sending to SNS
+    events:
+      - schedule: 
+          rate: rate(2 minutes)
+          enabled: true
+          input: {"scheduler":"2-minutes"}
+
+
+  filter:
+    handler: src/filterLambda.filter
+    description: Filtering data.
+    events:
+      - sns:
+          arn:
+            Fn::Join:
+              - ':'
+              - - 'arn:aws:sns'
+                - Ref: 'AWS::Region'
+                - Ref: 'AWS::AccountId'
+                - 'myWeatherTopic'
+          topicName: myWeatherTopic
+
+  writing:
+    handler: src/writingRDS.writing
+    timeout: 20
+    memorySize: 512
+    vpc:
+      securityGroupIds:
+        - !GetAtt JumpBoxSecurityGroup.GroupId
+      subnetIds:
+        - !Ref DBSubA
+        - !Ref DBSubB
+    events:
+      - sqs:
+          arn: !GetAtt myRDSQueue.Arn
+          batchSize: 10 
+          maximumBatchingWindow: 10
 
 resources:
     ${file(./resources/vpc.yml)}
