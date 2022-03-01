@@ -1,0 +1,215 @@
+Resources:
+
+          #######
+          # VPC #
+          #######
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: ${param:VPC}
+      Tags: 
+        - Key: Name
+          Value: ${self:service}-VPC
+
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags: 
+        - Key: Name
+          Value: Internet Gateway
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: 
+      InternetGatewayId: !Ref IGW
+      VpcId: !Ref VPC
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPC
+      Tags: 
+        - Key: Name
+          Value: Public Route Table
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteAssotiation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref SubnetA
+
+
+          ######################################
+          # Subnets:                           #
+          #  1 Public                          #
+          #  2 Private (DB Master / DB Backup) #
+          ######################################
+
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: ${self:provider.region}a
+      CidrBlock: ${param:SubnetA}
+      Tags: 
+        - Key: Name
+          Value: Public Subnet
+
+  DBSubA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: ${self:provider.region}a
+      CidrBlock: ${param:DBSubA}
+      Tags: 
+        - Key: Name
+          Value: DB Master Subnet
+
+  DBSubB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: ${self:provider.region}b
+      CidrBlock: ${param:DBSubB}
+      Tags: 
+        - Key: Name
+          Value: DB Backup Subnet
+
+          #######
+          # RDS #
+          #######
+
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: Databases Subnet Group
+      DBSubnetGroupName: DBSG
+      SubnetIds: 
+        - !Ref DBSubA
+        - !Ref DBSubB
+      Tags: 
+        - Key: Name
+          Value: Databases Subnet Group
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SSH / mySQL ACCESS from JumpBox"
+      GroupName: RDSSG
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref JumpBoxSecurityGroup
+          Description: "mySQL"
+          FromPort: 3306
+          ToPort: 3306
+          IpProtocol: tcp
+        - SourceSecurityGroupId: !Ref JumpBoxSecurityGroup
+          Description: "SSH"
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: RDS Security Group
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties: 
+      AllocatedStorage: "20"
+      BackupRetentionPeriod: 0
+      DBInstanceIdentifier: masterdb
+      DBInstanceClass: db.t2.micro
+      DBName: !Ref DBName
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      Engine: mysql
+      EngineVersion: 8.0.27
+      MasterUsername: !Ref DBUser
+      MasterUserPassword: !Ref DBPass
+      MultiAZ: false
+      Port: 3306
+      PubliclyAccessible: false
+      StorageType: gp2
+      VPCSecurityGroups: 
+        - !Ref RDSSecurityGroup
+
+          ###########
+          # JumpBox #
+          ###########
+
+  JumpBoxSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: "JumpBox SSH Access Group"
+      GroupName: JBSG
+      SecurityGroupIngress: 
+        -   CidrIp: ${param:Admin}
+            FromPort: 22
+            IpProtocol: tcp
+            ToPort: 22
+      VpcId: !Ref VPC
+      Tags: 
+        - Key: Name
+          Value: JumpBox Security Group
+
+  JumpBoxEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-08e4e35cccc6189f4
+      InstanceType: t2.micro
+      KeyName: hristijan
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash -xe
+            sudo yum update -y
+            sudo yum install mysql -y
+            cat <<EOF | mysql --host=${RDSInstance.Endpoint.Address} --user=${DBUser} --password=${DBPass}
+
+            USE ${DBName};
+            CREATE TABLE IF NOT EXISTS EOF (
+                Id INT AUTO_INCREMENT PRIMARY KEY,
+                City VARCHAR(255) NOT NULL,
+                Country VARCHAR(255) NOT NULL,
+                Description VARCHAR(255) NOT NULL,
+                Temperature INT NOT NULL,
+                Temp_min INT NOT NULL,
+                Temp_max INT NOT NULL
+            ); 
+
+            EOF
+# mysql -u root -h ${RDSInstance.Endpoint.Address} -p supersecretpass
+      NetworkInterfaces:       
+        - AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          SubnetId: !Ref SubnetA
+          DeviceIndex: "0"
+          GroupSet:
+            - !Ref JumpBoxSecurityGroup
+      Tags: 
+        - Key: Name
+          Value: JumpBox EC2 Instance
+
+Parameters:
+  DBName:
+    Default: 'mentorship'
+    Description: My database
+    Type: String
+
+  DBUser:
+    Default: 'root'
+    Type: String
+
+  DBPass:
+    Default: 'supersecretpass'
+    Type: String
