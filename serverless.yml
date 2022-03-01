@@ -1,0 +1,27 @@
+service: WeatherAPP
+
+frameworkVersion: '3'
+
+plugins:
+  - serverless-offline
+
+params:
+  default:
+
+    VPC: 10.10.0.0/16
+    SubnetA: 10.10.0.0/24
+    DBSubA: 10.10.10.0/24
+    DBSubB: 10.10.11.0/24
+
+    Admin: ${file(./conf/db.json):AdminCIDR}     
+    DBUser: ${file(./conf/db.json):DBUser}
+    DBPass: ${file(./conf/db.json):DBPass}
+    DBName: ${file(./conf/db.json):DBName}
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: us-east-1
+
+resources:
+    ${file(./resources/vpc.yml)}
