@@ -43,7 +43,7 @@ functions:
     events:
       - schedule: 
           rate: rate(2 minutes)
-          enabled: true
+          enabled: false
           input: {"scheduler":"2-minutes"}
 
 
@@ -74,7 +74,7 @@ functions:
     events:
       - sqs:
           arn: !GetAtt myRDSQueue.Arn
-          batchSize: 10 
+          batchSize: 3
           maximumBatchingWindow: 10
 
 resources:
