@@ -237,16 +237,16 @@ Resources:
         #######      
 
   myRDSQueue:
-        Type: "AWS::SQS::Queue"
-        Properties:
-            QueueName: myRDSQueue
-            DelaySeconds: 0
-            MaximumMessageSize: 4096
-            ReceiveMessageWaitTimeSeconds: 10
-            VisibilityTimeout: 30
-            Tags:
-              - Key: Name
-                Value: SQS2RDS
+    Type: "AWS::SQS::Queue"
+    Properties:
+        QueueName: myRDSQueue
+        DelaySeconds: 0
+        MaximumMessageSize: 4096
+        ReceiveMessageWaitTimeSeconds: 10
+        VisibilityTimeout: 120
+        Tags:
+          - Key: Name
+            Value: SQS2RDS
 
   snsTomyRDSQueuePolicy:
     Type: AWS::SQS::QueuePolicy
@@ -272,3 +272,4 @@ Resources:
       Endpoint: !GetAtt myRDSQueue.Arn
       Protocol: sqs
       RawMessageDelivery: true
+
