@@ -1,10 +1,6 @@
 # serverless-vpc
 
 ```
-deploy order: 
-    VPC
-    APP
-    FUNCTIONS
+mysql: masterdb.cqnfhoewhffm.us-east-1.rds.amazonaws.com
+jumpbox: 54.221.160.130
 ```
-
-JumpBox IP: 34.233.119.156
